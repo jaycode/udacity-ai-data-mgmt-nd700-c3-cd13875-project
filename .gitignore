@@ -1,0 +1,11 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.aws-sam/
+node_modules/
+build/
+dist/
+.env
+env.sh
+*.log

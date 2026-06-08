@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ShopFast Data Stores - DynamoDB, ElastiCache (Serverless-Only)
+
+Parameters:
+  VpcId:
+    Type: String
+    Description: VPC ID
+  PrivateSubnets:
+    Type: CommaDelimitedList
+    Description: Private subnet IDs
+  Environment:
+    Type: String
+    Default: dev
+
+Resources:
+  # DynamoDB Tables
+  ProductsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub shopfast-products-${Environment}
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      AttributeDefinitions:
+        - AttributeName: productId
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+      KeySchema:
+        - AttributeName: productId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: category-index
+          KeySchema:
+            - AttributeName: category
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ElastiCache Redis (for caching optimization exercise)
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      CacheSubnetGroupName: !Sub shopfast-cache-subnet-${Environment}
+      Description: Subnet group for ShopFast ElastiCache
+      SubnetIds: !Ref PrivateSubnets
+
+  RedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      ClusterName: !Sub shopfast-redis-${Environment}
+      CacheNodeType: cache.t3.micro
+      Engine: redis
+      EngineVersion: '7.0'
+      NumCacheNodes: 1
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      VpcSecurityGroupIds:
+        - !ImportValue
+          Fn::Sub: shopfast-network-DatabaseSG
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  ProductsTableName:
+    Description: Products DynamoDB table name
+    Value: !Ref ProductsTable
+    Export:
+      Name: !Sub ${AWS::StackName}-ProductsTable
+
+  ProductsTableArn:
+    Description: Products DynamoDB table ARN
+    Value: !GetAtt ProductsTable.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-ProductsTableArn
+
+  RedisEndpoint:
+    Description: ElastiCache Redis endpoint
+    Value: !GetAtt RedisCluster.RedisEndpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-RedisEndpoint
+
+  RedisPort:
+    Description: ElastiCache Redis port
+    Value: !GetAtt RedisCluster.RedisEndpoint.Port
+    Export:
+      Name: !Sub ${AWS::StackName}-RedisPort

@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ShopFast Notification Handler Lambda
+
+Globals:
+  Function:
+    Runtime: python3.11
+    MemorySize: 128
+    Timeout: 30
+    Environment:
+      Variables:
+        FROM_EMAIL: noreply@shopfast.example.com
+
+Resources:
+  NotificationHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: shopfast-notification-handler
+      CodeUri: .
+      Handler: handler.lambda_handler
+      Description: Processes order notifications and sends customer emails
+      Policies:
+        - SESCrudPolicy:
+            IdentityName: '*'
+        - SNSCrudPolicy:
+            TopicName: shopfast-*
+      Events:
+        OrderNotifications:
+          Type: SNS
+          Properties:
+            Topic: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:shopfast-notifications
+            FilterPolicy:
+              eventType:
+                - order.created
+                - order.shipped
+                - order.delivered
+
+  NotificationHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${NotificationHandlerFunction}
+      RetentionInDays: 14
+
+Outputs:
+  NotificationHandlerFunction:
+    Description: Notification Handler Lambda Function ARN
+    Value: !GetAtt NotificationHandlerFunction.Arn
+
+  NotificationHandlerLogGroup:
+    Description: CloudWatch Log Group
+    Value: !Ref NotificationHandlerLogGroup

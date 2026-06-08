@@ -1,0 +1,8 @@
+# AWS X-Ray SDK for distributed tracing
+# Required to see DynamoDB connections in X-Ray service map
+aws-xray-sdk>=2.12.0
+
+# Redis client for ElastiCache cache-aside integration
+redis>=5.0.0
+
+# boto3 is included in AWS Lambda Python runtime

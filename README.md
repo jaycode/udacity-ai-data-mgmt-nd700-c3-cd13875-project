@@ -1,122 +1,288 @@
-# Bias Evaluation and Ethical Audit
+# ShopFast E-Commerce Platform: Troubleshooting & Optimization Project
 
-# Jupyter Notebook Instructions 
+## Overview
 
-In this exercise, you will review a fine-tuned language model, load it into a Jupyter Notebook, evaluate its outputs, and apply explainability techniques to assess potential bias. You will use your findings to complete an Ethical Audit Report, a Comprehensive Mitigation Plan, and a presentation for the Ethics Committee to review. 
+It's 2 AM and your phone is buzzing with alerts. **ShopFast**, a rapidly growing e-commerce startup, is experiencing their worst nightmare during Black Friday weekend.
 
-### **Step 1: Review the Model Card**
+ShopFast has grown from a small online retailer to processing over 50,000 orders daily. Their engineering team worked around the clock to scale their AWS infrastructure for the holiday rush, but the hastily assembled system is now falling apart. Customers are reporting slow page loads, failed checkouts, and missing order confirmations.
 
-Before downloading the model, take time to understand what you will be working with.
+As a **Senior DevOps Consultant**, the CTO has brought you in to save their platform. You'll implement proper observability, identify and fix issues plaguing the platform, optimize performance, and build production-grade monitoring.
 
-1. Review the **model card**, paying close attention to:  
-   * The base model used  
-   * How the model was fine-tuned  
-   * The purpose and intended use of the model  
-   * Known limitations and ethical considerations  
-2. This context will help you better interpret the model’s behavior during testing and analysis.
+### Learning Objectives
 
-### **Step 2: Set Up Your Environment**
+- **Implement Observability**: Transform a poorly instrumented application into a fully observable system
+- **Debug Under Pressure**: Use logs, metrics, and traces to identify root causes of production issues
+- **Optimize for Performance**: Profile bottlenecks and implement caching strategies
+- **Build for Production**: Create monitoring and alerting that catches problems before customers do
 
-Navigate to the **Udacity Workspace** or another Jupyter-compatible environment.
+---
 
-1. Launch your Jupyter environment.  
-2. Open **JupyterLab**.
+## Architecture Overview
 
-### **Step 3: Download the Starter Notebook**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CloudFront CDN                                  │
+│                           (Frontend Distribution)                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                               S3 Bucket                                      │
+│                          (React Static Assets)                               │
+└─────────────────────────────────────────────────────────────────────────────┘
 
-1. Download the provided notebook file from the course resources.  
-2. Upload the notebook to your Jupyter environment.  
-3. Open the notebook and review its structure before running any cells.
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Lambda Function URLs                                │
+│                       (Direct HTTP API Endpoints)                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+                    ┌─────────────────────────────────┐
+                    │  Lambda: product-service        │
+                    │  (Python 3.11)                  │
+                    └────────────────┬────────────────┘
+                                     │
+              ┌──────────────────────┼──────────────────────┐
+              ▼                      ▼                      ▼
+┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
+│  DynamoDB           │  │  ElastiCache Redis  │  │  SNS Topic          │
+│  (Products Table)   │  │  (Caching Layer)    │  │  (Product Events)   │
+└─────────────────────┘  └─────────────────────┘  └──────────┬──────────┘
+                                                             │
+                         ┌───────────────────────────────────┤
+                         ▼                                   ▼
+           ┌─────────────────────────┐         ┌─────────────────────────┐
+           │  EventBridge            │         │  Lambda:                │
+           │  (shopfast-events)      │         │  notification-handler   │
+           └────────────┬────────────┘         └─────────────────────────┘
+                        │
+                        ▼
+           ┌─────────────────────────┐
+           │  SQS Queue              │
+           │  (+ Dead Letter Queue)  │
+           └─────────────────────────┘
+```
 
-### **Step 4: Install Required Libraries**
+### Service Summary
 
-From the terminal, install the required dependencies:
+| Service | Platform | Runtime | Data Store |
+|---------|----------|---------|------------|
+| Frontend | CloudFront + S3 | React 18 | - |
+| Product Service | Lambda (Function URL) | Python 3.11 | DynamoDB |
+| Notification Handler | Lambda | Python 3.11 | - |
 
-pip install -r requirements.txt
+### Integration Layer
 
-Restart the kernel if prompted.
+- **EventBridge**: Product events bus (`shopfast-events`)
+- **SNS Topics**: Product events, customer notifications
+- **SQS Queues**: Product processing queue, dead letter queue
 
-### **Step 5: Load the Model**
+---
 
-1. Run the provided code cell to load the model and tokenizer.  
-2. Verify that the model loads without errors.
+## Getting Started
 
-### **Step 6: Generate Model Outputs Using Predefined Prompts**
+### Cloud9 Setup
 
-1. Run the cells that generate outputs using predefined prompts.  
-2. Review the generated text carefully.  
-3. Observe how the model responds to neutral, explicit, and role-based prompts.
+1. Open the AWS Console and navigate to **Cloud9**
+2. Click **Create environment**
+3. Configure:
+   - Name: `shopfast-dev`
+   - Set your instance type to: `t3.medium`:
+     - Go to `New EC2 Instance`
+     - Click `Additional instance types`
+     - Click the Drop Down under `Additional Instance Types`
+     - Search for `t3.medium`
+     - Select `t3.medium`
+   - Platform: Amazon Linux 2023
+4. Click **Create**
+5. Wait for the environment to initialize
 
-### **Step 7: Create Your Own Test Prompts**
+### Open the Cloud9 IDE
+1.  Now that you have created the environment, you can access Cloud9 from the Cloud9 service in the AWS Console.
+2.  Select the environment you just created and click **Open in Cloud9**
+3.  You should now be in the Cloud9 IDE, here's is a quick overview of what Cloud9 is:
+    -  The Cloud9 IDE is an AWS cloud-based integrated development environment (IDE) that lets you write, run, and debug code in your browser.
+    - Think of it as VS Code but running in your AWS cloud environment.
+    - You can use the Cloud9 IDE to write, run, and debug your code, and to interact with AWS services.
+    - We will be using the Cloud9 IDE to both bootstrap our environment and to complete the project.
 
-1. Modify or add new prompts in the notebook.  
-2. Generate additional outputs.  
-3. Use these prompts to explore how small changes affect model behavior.
+### Cloning the Repository
+1. Once the Cloud9 IDE is open, you can use the terminal at the bottom of the IDE to clone the repository.
+2. Click inside the bash terminal (lower right corner of the console) and paste the following commands:
+  - `git clone https://github.com/udacity/cd14940-troubleshooting-and-optimization-in-aws-for-developers.git`
+  - `cd cd14940-troubleshooting-and-optimization-in-aws-for-developers/starter/bootstrap_scripts`
 
-### **Step 8: Apply Explainability Techniques**
+### Installing Dependencies
+- To install the dependencies run the following commands:
+  - `chmod +x scripts/setup-environment.sh`
+  - `bash scripts/setup-environment.sh`
+- **Note:** The script takes about 5 minutes to run.
+- This script will install:
+  - AWS SAM CLI
+  - Docker
+  - uv (Python package manager)
+  - Node.js 18+
 
-Run the notebook sections that apply explainability techniques, including:
+### Bootstrap Infrastructure
+- Run the following commands to bootstrap the environment:
+  - `chmod +x bootstrap.sh`
+  - `bash bootstrap.sh`
 
-* Prompt sensitivity testing  
-* Counterfactual prompt comparisons  
-* Lexicon-based bias signal analysis 
+The bootstrap process takes approximately 20-30 minutes and will:
+1. Create networking infrastructure (VPC, subnets, security groups)
+2. Deploy data stores (DynamoDB, ElastiCache)
+3. Set up messaging (SNS, SQS, EventBridge)
+4. Deploy compute resources (Lambda with Function URLs)
+5. Configure CloudFront
+6. Deploy the React frontend
+7. Seed sample data
 
-Review the resulting tables and outputs.
+5. **Verify Deployment**
+   ```bash
+   ./verify-deployment.sh
+   ```
 
-### **Step 9: Analyze Results and Identify Patterns**
+### Environment Variables
 
-1. Examine how often gendered language appears in neutral prompts.  
-2. Compare outputs across gender swaps.  
-3. Review the explainability summary tables produced by the notebook.  
-4. Note recurring patterns, shifts in language, or unexpected artifacts.
+After bootstrapping, the following variables are configured:
 
-### **Step 10: Produce the Ethical Audit Report**
+| Variable | Description |
+|----------|-------------|
+| `API_ENDPOINT` | Lambda Function URL for product service |
+| `CLOUDFRONT_URL` | Frontend distribution URL |
 
-Using your testing results and explainability outputs:
+---
 
-1. Complete the **Ethical Audit Report**.  
-2. Include relevant tables directly from the notebook.  
-3. Clearly document findings, risks, and limitations.
+## Project Instructions
 
-# Ethical Audit Report 
+This project is organized into four parts:
 
-The Ethical Audit Report documents what you observed about the model’s behavior, risks, and limitations based on systematic testing and explainability analysis.
+| Part | Description | MVP Time |
+|------|-------------|----------|
+| **Part 1** | Implement Comprehensive Observability | 60-75 min |
+| **Part 2** | Diagnose and Fix Application Issues | 60-75 min |
+| **Part 3** | Optimize Performance and Implement Caching | 45-60 min |
+| **Part 4** | Configure Monitoring, Alerts, and Health Checks | 30-45 min |
+| **Total** | All MVP Requirements | 3-4 hours |
 
-This report focuses on evidence rather than solutions. Submit a completed Ethical Audit Report with:
+### Part 1: Implement Observability
 
-* Explainability tables embedded  
-* Clear references to notebook outputs  
-* Evidence-based observations
+- Implement structured JSON logging
+- Enable X-Ray tracing on Lambda
+- Publish custom EMF metrics
+- Build operational CloudWatch dashboard
 
-# Comprehensive Mitigation Plan
+### Part 2: Diagnose and Fix Issues
 
-The Comprehensive Mitigation Plan outlines how the risks identified in the Ethical Audit Report can be addressed prior to deployment.
+- Analyze logs with CloudWatch Insights
+- Debug Lambda service issues
+- Document and verify fixes for at least 3 distinct issues
 
-This document focuses on actions and safeguards rather than analysis. Submit a completed Comprehensive Mitigation Plan that:
+### Part 3: Optimize Performance
 
-* Directly maps to risks identified in the Ethical Audit Report  
-* Focuses on actionable, realistic safeguards
+- Profile application performance with X-Ray
+- Right-size Lambda resources
+- Integrate ElastiCache Redis for caching
 
-# Ethics Committee Presentation
+### Part 4: Configure Monitoring
 
-The Ethics Committee Presentation communicates your findings and recommendations to non-technical stakeholders responsible for oversight and approval.
+- Implement health check endpoints
+- Create CloudWatch alarms
+- Set up SNS notifications
 
-This presentation should be clear, concise, and evidence-driven. Submit a slide deck suitable for an Ethics Committee that:
+**For complete instructions, see [Project_Instructions.md](documentation/Project_Instructions.md)**
 
-* Uses plain language  
-* Includes evidence from your analysis  
-* Clearly connects risks to mitigation actions
+---
 
-# Submission Checklist
+## Directory Structure
 
-Before submitting, confirm that you have:
+```
+starter/
+├── bootstrap_scripts/      # Infrastructure deployment scripts
+│   ├── bootstrap.sh        # Main deployment script
+│   ├── cleanup.sh          # Resource cleanup
+│   └── verify-deployment.sh
+├── starter_code/           # Application code to troubleshoot
+├── documentation/          # Instructions and rubric
+├── README.md               # This file
+└── Project_Rubric.md       # Grading criteria
+```
 
-* Reviewed the model card
-* Successfully loaded the model into your Jupyter Notebook  
-* Generated outputs using predefined and custom prompts  
-* Conducted prompt sensitivity testing and counterfactual analysis  
-* Applied lexicon-based explainability techniques to analyze bias signals  
-* Generated explainability tables from notebook outputs  
-* Completed the Ethical Audit Report using evidence from the explainability tables  
-* Completed the Comprehensive Mitigation Plan addressing identified risks  
-* Created the Ethics Committee Presentation summarizing findings and mitigations
+---
+
+## Testing & Verification
+
+### Verify Infrastructure
+
+```bash
+# Check all services are running
+./bootstrap_scripts/verify-deployment.sh
+
+# Verify Lambda Function URL
+curl -X GET ${API_ENDPOINT}products
+
+# Verify CloudFront
+curl -I $CLOUDFRONT_URL
+```
+
+### Health Check Endpoints
+
+| Service | Endpoint |
+|---------|----------|
+| Product Service | `GET /health` (via Lambda Function URL) |
+
+---
+
+## Cleanup
+
+When finished with the project, clean up all AWS resources:
+
+```bash
+cd bootstrap_scripts
+./cleanup.sh
+```
+
+**Warning**: This will permanently delete all deployed resources and data. Ensure you have saved all required screenshots and documentation before running cleanup.
+
+---
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Bootstrap fails | Check IAM permissions; ensure Cloud9 has Admin role |
+| Lambda timeout | Check VPC configuration and security groups |
+| DynamoDB throttling | Verify provisioned capacity or enable on-demand |
+| Redis connection failed | Verify security groups allow port 6379 |
+
+### Getting Help
+
+1. Review CloudWatch Logs for error messages
+2. Check X-Ray service map for failed traces
+3. Verify IAM permissions for each service
+4. Consult course materials for specific techniques
+
+---
+
+## Built With
+
+### AWS Services
+
+- **Compute**: Lambda (with Function URLs)
+- **Storage**: S3, DynamoDB
+- **Caching**: ElastiCache Redis
+- **Networking**: CloudFront, VPC
+- **Messaging**: SNS, SQS, EventBridge
+- **Observability**: CloudWatch, X-Ray
+
+### Technologies
+
+- React 18 (Frontend)
+- Python 3.11 (Backend Services)
+- AWS SAM / CloudFormation (Infrastructure)
+
+---
+
+## License
+
+[License](../LICENSE.txt)

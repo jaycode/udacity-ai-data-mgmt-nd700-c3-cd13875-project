@@ -1,0 +1,188 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ShopFast Messaging Infrastructure - SNS, SQS, EventBridge (Serverless-Only)
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+
+Resources:
+  # SNS Topics
+  ProductEventsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub shopfast-product-events-${Environment}
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  NotificationsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub shopfast-notifications-${Environment}
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # SQS Queues
+  ProductProcessingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub shopfast-product-processing-dlq-${Environment}
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  ProductProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub shopfast-product-processing-${Environment}
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: 86400  # 1 day
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ProductProcessingDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  NotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub shopfast-notifications-${Environment}
+      VisibilityTimeout: 30
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # SQS Queue Policies
+  ProductProcessingQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref ProductProcessingQueue
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt ProductProcessingQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref ProductEventsTopic
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt ProductProcessingQueue.Arn
+
+  NotificationQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref NotificationQueue
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt NotificationQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref NotificationsTopic
+
+  # SNS Subscriptions
+  ProductProcessingSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref ProductEventsTopic
+      Protocol: sqs
+      Endpoint: !GetAtt ProductProcessingQueue.Arn
+
+  NotificationSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref NotificationsTopic
+      Protocol: sqs
+      Endpoint: !GetAtt NotificationQueue.Arn
+
+  # EventBridge Event Bus
+  ShopFastEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub shopfast-events-${Environment}
+
+  # EventBridge Rules
+  ProductUpdatedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub shopfast-product-updated-${Environment}
+      Description: Route product update events to processing
+      EventBusName: !Ref ShopFastEventBus
+      EventPattern:
+        source:
+          - shopfast.products
+        detail-type:
+          - ProductEvent
+      State: ENABLED
+      Targets:
+        - Id: ProductProcessingTarget
+          Arn: !GetAtt ProductProcessingQueue.Arn
+
+Outputs:
+  ProductEventsTopicArn:
+    Description: Product Events SNS Topic ARN
+    Value: !Ref ProductEventsTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-ProductEventsTopic
+
+  NotificationsTopicArn:
+    Description: Notifications SNS Topic ARN
+    Value: !Ref NotificationsTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-NotificationsTopic
+
+  ProductProcessingQueueUrl:
+    Description: Product Processing SQS Queue URL
+    Value: !Ref ProductProcessingQueue
+    Export:
+      Name: !Sub ${AWS::StackName}-ProductProcessingQueue
+
+  ProductProcessingQueueArn:
+    Description: Product Processing SQS Queue ARN
+    Value: !GetAtt ProductProcessingQueue.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-ProductProcessingQueueArn
+
+  ProductProcessingDLQUrl:
+    Description: Product Processing DLQ URL
+    Value: !Ref ProductProcessingDLQ
+    Export:
+      Name: !Sub ${AWS::StackName}-ProductProcessingDLQ
+
+  NotificationQueueUrl:
+    Description: Notification SQS Queue URL
+    Value: !Ref NotificationQueue
+    Export:
+      Name: !Sub ${AWS::StackName}-NotificationQueue
+
+  NotificationQueueArn:
+    Description: Notification SQS Queue ARN
+    Value: !GetAtt NotificationQueue.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-NotificationQueueArn
+
+  EventBusName:
+    Description: ShopFast EventBridge Event Bus Name
+    Value: !Ref ShopFastEventBus
+    Export:
+      Name: !Sub ${AWS::StackName}-EventBus
+
+  EventBusArn:
+    Description: ShopFast EventBridge Event Bus ARN
+    Value: !GetAtt ShopFastEventBus.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-EventBusArn

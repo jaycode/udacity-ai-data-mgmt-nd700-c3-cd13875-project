@@ -1,0 +1,72 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ShopFast Product Service Lambda (Serverless-Only)
+
+Globals:
+  Function:
+    Runtime: python3.11
+    MemorySize: 256
+    Timeout: 10
+    Tracing: Active
+    Environment:
+      Variables:
+        PRODUCTS_TABLE: shopfast-products-dev
+        ENVIRONMENT: dev
+        LOG_LEVEL: INFO
+        REDIS_ENDPOINT: !ImportValue shopfast-data-RedisEndpoint
+        REDIS_PORT: !ImportValue shopfast-data-RedisPort
+        CACHE_TTL_SECONDS: 300
+  Api:
+    Cors:
+      AllowMethods: "'GET,OPTIONS'"
+      AllowHeaders: "'Content-Type,X-Correlation-Id'"
+      AllowOrigin: "'*'"
+
+Resources:
+  ProductServiceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: shopfast-product-service-dev
+      CodeUri: .
+      Handler: handler.lambda_handler
+      Description: Product catalog service for ShopFast
+      VpcConfig:
+        SecurityGroupIds:
+          - !ImportValue shopfast-network-LambdaSG
+        SubnetIds: !Split [",", !ImportValue shopfast-network-PrivateSubnets]
+      Policies:
+        - AWSLambdaVPCAccessExecutionRole
+        - AWSXRayDaemonWriteAccess
+        - DynamoDBReadPolicy:
+            TableName: shopfast-products-dev
+      Events:
+        ProductsApi:
+          Type: Api
+          Properties:
+            Path: /products
+            Method: get
+        ProductByIdApi:
+          Type: Api
+          Properties:
+            Path: /products/{id}
+            Method: get
+        HealthApi:
+          Type: Api
+          Properties:
+            Path: /health
+            Method: get
+
+  ProductServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/shopfast-product-service-dev
+      RetentionInDays: 7
+
+Outputs:
+  ProductServiceFunction:
+    Description: Product Service Lambda Function ARN
+    Value: !GetAtt ProductServiceFunction.Arn
+
+  ProductServiceApiUrl:
+    Description: Product Service API Gateway URL
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
